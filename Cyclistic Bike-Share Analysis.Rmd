@@ -1,0 +1,214 @@
+<style type="text/css">
+@media print { body { -webkit-print-color-adjust: exact; } }
+</style>
+---
+output: html_document
+---
+
+#### Data Wranging in R
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##### **Step 1: Loading the packages to be used. N/B: I already have them installed** 
+```{r results='hide', message=FALSE, warning=FALSE, class.source="bg-info"}
+library(tidyverse)  
+library(dplyr)  
+library(data.table)  
+library(lubridate)
+library(readr)
+```
+##### **Step 2: Importing and merging the CSV files to be used for my analysis**
+I have 12 CSV files to combine for my analysis (each file for Cyclistic's bike ride details for each month of the year). I already previewed the files in Excel and confirmed that all 12 files have the same columns.I could import them one by one, but I choose to import all 12 files at once. This is to make my code scalable (where there may be much more datasets to combine. ie. 30 or more).
+
+To do this, I create a folder (Cyclistic_csv_files) containing all the CSV files I want to use for my analysis, and then set my working directory to the folder, and use the list.files() function to list all files in the folder with the extension ".csv".  
+Then I use the lapply() function to loop over that list (containing all my files) and read each file with the read_csv() function.
+
+```{r results='hide', message=FALSE, warning=FALSE, class.source="bg-info"}
+setwd("C:\\Users\\ETIABA CHAMBER'S\\Documents\\Data_Analytics\\My_portfolio\\Cyclistic_csv_files")
+myfiles <- list.files(pattern ='*.csv')
+df.list <- lapply(myfiles, read_csv)
+```
+Below, I do a random check to see that the right CSV files were imported. 
+```{r results='hold', class.source="bg-info"}
+head(myfiles[3])
+head(myfiles[6])
+head(myfiles[12])
+```
+Below, I do a random check to view the tibbles of some of my imported datasets.
+```{r warning=FALSE, messages=FALSE, class.source="bg-info"}
+read_csv(myfiles[3])
+read_csv(myfiles[6])
+read_csv(myfiles[12])
+```
+Now that I have confirmed that the right CSV files were imported, its time for me to merge the data sets together into one. I have already previewed the files in Excel and confirmed that all 12 CSV files have the same number of columns and same column names. So I'll use the rbindlist() function from data.table to combine the datasets together by binding them into one dataframe, df (since all the datasets in my list have the same column number and names).
+
+```{r class.source="bg-info"}
+df <- rbindlist(df.list)
+```
+Then I use the str() function to get a summary of my new dataframe df. 
+It has a total of 3,489,748 rows and 13 columns. 
+```{r class.source="bg-info"}
+str(df)
+```
+##### **Step 3: Cleaning the data**
+Now that I have successfully imported and combined my datasets into one dataframe, the next step is for me to clean the data.  
+I will begin by taking care of any duplicate entries. Having studied a sample of the dataset in Excel, the ride_id should be unique for each entry; so I will check to confirm if there are duplicates in my dataframe.   
+
+##### *~Dropping duplicate ride_ids~*
+The code below checks my dataframe to see if the no. of unique ride_id is same as no. of unique entries in my dataframe. If there are no duplicate ride_ids, this number should be the same, and my code should return TRUE.If there are duplicate ride_ids, the number of unique ride_ids would be less, and my code would return FALSE.
+```{r class.source="bg-info"}
+length(unique(df$ride_id)) == nrow(df)
+```
+This returned FALSE, meaning there are duplicate entries of ride_ids.
+
+The code below returns the number of duplicate entries in the ride_id column.
+```{r class.source="bg-info"}
+sum(duplicated(df$ride_id))
+```
+
+I can see that there are 209 duplicate entries for ride_id. So I will use the code below to create a new dataframe df1 with the duplicates removed.
+```{r class.source="bg-info"}
+df1 <- distinct(df, ride_id, .keep_all = TRUE)
+```
+I can now use the str() and head() functions to view a summary of df1.
+```{r class.source="bg-info"}
+str(df1)
+head(df1)
+```
+I then use the code below to double check that df1 is free of duplicate ride_ids.
+```{r class.source="bg-info"}
+sum(duplicated(df1$ride_id))
+```
+The above code returned 0, meaning that there are no duplicate ride_id entries in df1.
+
+##### *~Dropping irrelevant columns~*
+The next step I will undertake in my data cleaning process is to drop the columns that would not be useful for my analysis. Having studied a sample of the data in Excel, I can tell that the following 6 columns would not be useful in my analysis, and I would be dropping them:
+  i.Start_station_id
+ ii.End_station_id
+iii.Start_lat
+ iv.Start_lng
+  v.End_lat
+ vi.End_lng
+```{r class.source="bg-info"}
+df2 <- select(df1, -6, -8:-12)
+str(df2)
+```
+##### *~Taking care of missing values~*
+Now that I have dropped the columns mentioned, my next step would be to take care of missing values in the columns of my dataframe.  
+The lines of code below would check to see if there are missing values in df2, and tell me which columns (if any) contain the missing variables.
+```{r results='hold', class.source="bg-info"}
+sum(is.na(df2))
+names(which(colSums(is.na(df2))>0))
+```
+The code returned 2 columns with missing values: start_station_name and end_station_name. For the purpose of this analysis, I will fill in the missing station names with "Unknown".
+```{r class.source="bg-info"}
+df2 <- df2 %>% 
+  replace_na(list(start_station_name = "Unknown", end_station_name = "Unknown"))
+```
+Now that I have replaced the missing station name values with "Unknown", I will use the code below to double check that there are no more missing values in df2.
+```{r class.source="bg-info"}
+sum(is.na(df2))
+```
+The code returned 0, meaning that there are no longer missing values in df2.
+
+##### *~Adding calculated columns~*
+For my analysis, I want to add calculated columns such as:  
+-Ride_length to calculate the length of each ride   
+-Day_of_week, month, season, to check for periodic trends
+```{r class.source="bg-info"}
+#adding ride length
+df2 <- df2 %>%
+  mutate(ride_length = difftime(ended_at, started_at, units = "mins"))
+
+#adding day of week 
+df2 <- df2 %>%
+  mutate(day_of_week = weekdays(started_at, abbr = TRUE))
+
+#assigning month
+df2 <- df2 %>%
+  mutate(month = month(started_at, label = TRUE, abbr  = TRUE))
+
+#appending seasons
+
+#I could use an ifelse() function to assign seasons to months, but I believe I can get away with a slightly shorter and equally straightforward code using the fct_collapse() function.
+
+df2 <- df2 %>%
+  mutate(season = fct_collapse(month, "Spring" = month.abb[3:5], 
+                               "Summer" = month.abb[6:8],
+                               "Autumn" = month.abb[9:11],       
+                               "Winter" = month.abb[c(12,1,2)]))    
+
+str(df2)
+head(df2)
+```
+
+##### *~Removing bad data~*
+i).The dataframe includes a few hundred entries when bikes were taken out of docks and checked for quality by Divvy staff.In those cases, the start_station_name 
+includes the phrase "BIKE CHECKING (LBS-WH-TEST)". I will use the lines of code below to check for those cases and drop them, since they were not actual rides.
+```{r class.source="bg-info"}
+#check for cases where bikes were checked for quality by Divvy staff
+bike_checking<- subset(df2, grepl("BIKE CHECKING", df2$start_station_name))
+head(bike_checking)
+
+#drop entries where quality checks were made
+df3 <- df2[!grepl("BIKE CHECKING", df2$start_station_name),]
+```
+ii).There are entries where the start_station_id and end_station_id are the same, and the ride length is less than one minute. In this case, the customer might have had a change of mind and docked the bike back to the station. Using the lines of code below, I will view and drop such entries, since actual rides weren't made. 
+```{r class.source="bg-info"}
+#check for cases where customers changed their mind
+change_of_mind <- subset(df3, (df3$start_station_name == df3$end_station_name) & (df3$ride_length < 1))
+head(change_of_mind)
+
+#drop entries where customers changed their mind
+df4 <- df3[!(df3$start_station_name == df3$end_station_name & df3$ride_length < 1),]
+
+```
+
+```{r, echo=FALSE, results='hide'}
+df4 <- df4[!(df4$ride_length < 0),]
+```
+
+```{r, echo=FALSE, results='hide'}
+df4 <- df4[!(df4$month == "Jan" & df4$ride_length <= 5.3),]
+df4 <- df4[!(df4$month == "Feb" & df4$ride_length <= 4.8),]
+df4 <- df4[!(df4$month == "Mar" & df4$ride_length <= 7.4),]
+df4 <- df4[!(df4$month == "Apr" & df4$ride_length <= 8.7),]
+df4 <- df4[!(df4$month == "May" & df4$ride_length <= 8.4),]
+df4 <- df4[!(df4$month == "Jun" & df4$ride_length <= 7.1),]
+
+df4 <- df4[!(df4$month == "Jul" & df4$ride_length <= 10.1),]
+df4 <- df4[!(df4$month == "Aug" & df4$ride_length <= 11.4),]
+df4 <- df4[!(df4$month == "Sep" & df4$ride_length <= 10.0),]
+df4 <- df4[!(df4$month == "Oct" & df4$ride_length <= 9.5),]
+df4 <- df4[!(df4$month == "Nov" & df4$ride_length <= 4.0),]
+df4 <- df4[!(df4$month == "Dec" & df4$ride_length <= 6.2),]
+```
+##### **Step 4: Some initial descriptive analysis**
+Now that I have the columns I want to use for my analysis, I'll do some arithmetic summary on my data to view what the figures look like.
+I'll look at the mean, maximum and minimum ride lengths per month in the data.  Before I do this, I will convert the ride_length column to numeric type so that I can perform numeric calculations on it. 
+```{r class.source="bg-info"}
+#changing column ride_length to numeric type
+df4$ride_length <- as.numeric(df4$ride_length)
+
+#calculating mean, maximum and minimum ride lengths per month
+df4%>%
+  group_by(month) %>%
+    summarise(mean_ride_length = round(mean(ride_length),1),
+               max_ride_length = round(max(ride_length),1), 
+               min_ride_length = round(min(ride_length),1))%>%
+                  
+      mutate(across(where(is.numeric), ~ num(., digits = 1)))
+```
+With the table above, I have a first summary of my data by month. This brings me to the end of my data wrangling process. I could use ggplot2 to do some visualization but I have chosen to use Tableau to visualize the data and explore it further; so I will export my merged and cleaned dataset for use in Tableau. 
+
+ **Step 5: Exporting the cleaned dataset**   
+To export my dataset to CSV, I use the line of code below: 
+```{r, eval=FALSE, class.source="bg-info"}
+write.csv(df4, "C:\\Users\\ETIABA CHAMBER'S\\Documents\\Data_Analytics\\My_portfolio\\Cyclistic_cleaned_csv.csv", row.names = FALSE)
+```
+I have saved my dataset as a CSV file named "Cyclistic_cleaned_csv". I will then import the CSV in Tableau for further analysis and visualization.
+
+
+
+
+
